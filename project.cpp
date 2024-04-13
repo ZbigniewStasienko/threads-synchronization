@@ -46,11 +46,12 @@ mutex threadMutex;
 void threadFunction(shared_ptr<ThreadData> data) {
     bool reachedCenter = false;
     bool reachedStand = false;
+    float threadSpeed = data->speed;
 
     while (data->active) {
         {
             lock_guard<mutex> lk(threadMutex);
-            data->x += data->speed;
+            data->x += 0.005f;
             data->y += data->direction;
         }
 
@@ -58,9 +59,9 @@ void threadFunction(shared_ptr<ThreadData> data) {
             reachedCenter = true;
             lock_guard<mutex> colorLock(colorMutex);
             if (currentColorIndex == 0) {
-                data->direction = (data->speed)/2;
+                data->direction = 0.0025;
             } else if (currentColorIndex == 1) {
-                data->direction = -(data->speed)/2;
+                data->direction = -0.0025;
             }
         }
 
@@ -74,7 +75,7 @@ void threadFunction(shared_ptr<ThreadData> data) {
             data->active = false;
         }
 
-        usleep(50000);
+        usleep(threadSpeed);
     }
 
     {
@@ -176,7 +177,7 @@ int main() {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();
         if (elapsed >= 1.5f) {
-            float speed = static_cast<float>(rand() % 4 + 1) / 150.0f;
+            float speed = static_cast<float>(rand() % 10000 + 5000);
             auto data = make_shared<ThreadData>(speed);
             data->workerThread = thread(threadFunction, data);
             threadsData.push_back(data);
@@ -185,6 +186,24 @@ int main() {
         draw();
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        {
+            vector<shared_ptr<ThreadData>> activeThreads;
+            {
+                lock_guard<mutex> lk(threadMutex);
+                for (auto& data : threadsData) {
+                    if (!data->finished) {
+                        activeThreads.push_back(data);
+                    } else if (data->workerThread.joinable()) {
+                        data->workerThread.join();
+                    }
+                }
+                threadsData.swap(activeThreads);
+            }
+        }
+
+        printf("%d \n", threadsData.size());
+        
     }
 
     for (auto& thread : threadsData) {

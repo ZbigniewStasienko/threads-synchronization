@@ -39,6 +39,7 @@ int currentColorIndex = 0;
 mutex colorMutex;
 bool running = true;
 
+thread colorChangeThread;
 vector<shared_ptr<ThreadData>> threadsData;
 mutex threadMutex;
 
@@ -57,9 +58,9 @@ void threadFunction(shared_ptr<ThreadData> data) {
             reachedCenter = true;
             lock_guard<mutex> colorLock(colorMutex);
             if (currentColorIndex == 0) {
-                    data->direction = (data->speed)/2;
-                } else if (currentColorIndex == 1) {
-                    data->direction = -(data->speed)/2;
+                data->direction = (data->speed)/2;
+            } else if (currentColorIndex == 1) {
+                data->direction = -(data->speed)/2;
             }
         }
 
@@ -75,6 +76,7 @@ void threadFunction(shared_ptr<ThreadData> data) {
 
         usleep(50000);
     }
+
     {
         lock_guard<mutex> lk(threadMutex);
         data->finished = true;
@@ -148,7 +150,7 @@ void draw() {
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
+        running = false;
     }
 }
 
@@ -166,11 +168,11 @@ int main() {
     glfwMakeContextCurrent(window);
     glOrtho(-1.0, 1.2, -1.0, 1.0, -1.0, 1.0);
 
-    thread colorChangeThread(colorChangeFunction);
+    colorChangeThread = thread(colorChangeFunction);
 
     auto lastCreationTime = chrono::steady_clock::now();
 
-    while (!glfwWindowShouldClose(window)) {
+    while (running) {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();
         if (elapsed >= 1.5f) {
@@ -185,16 +187,22 @@ int main() {
         glfwPollEvents();
     }
 
-    running = false;
-    colorChangeThread.join();
-
     for (auto& thread : threadsData) {
         thread->active = false;
         if (thread->workerThread.joinable()) {
             thread->workerThread.join();
         }
     }
-    
+
+    if (colorChangeThread.joinable()) {
+        colorChangeThread.join();
+    }
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    glfwSwapBuffers(window);
+    usleep(250000);
+
+    glfwSetWindowShouldClose(window, GL_TRUE);
     glfwDestroyWindow(window);
     glfwTerminate();
 

@@ -18,7 +18,7 @@ struct ThreadData {
     float direction;
     volatile bool active;
     volatile bool finished;
-    thread workerThread;
+    thread threadId;
     float color[3];
 
     ThreadData(float s)
@@ -57,7 +57,6 @@ void threadFunction(shared_ptr<ThreadData> data) {
 
         if (!reachedCenter && data->x >= 0.0f) {
             reachedCenter = true;
-            lock_guard<mutex> colorLock(colorMutex);
             if (currentColorIndex == 0) {
                 data->direction = 0.0025;
             } else if (currentColorIndex == 1) {
@@ -179,7 +178,7 @@ int main() {
         if (elapsed >= 1.5f) {
             float speed = static_cast<float>(rand() % 10000 + 5000);
             auto data = make_shared<ThreadData>(speed);
-            data->workerThread = thread(threadFunction, data);
+            data->threadId = thread(threadFunction, data);
             threadsData.push_back(data);
             lastCreationTime = currentTime;
         }
@@ -194,19 +193,19 @@ int main() {
                 for (auto& data : threadsData) {
                     if (!data->finished) {
                         activeThreads.push_back(data);
-                    } else if (data->workerThread.joinable()) {
-                        data->workerThread.join();
+                    } else if (data->threadId.joinable()) {
+                        data->threadId.join();
                     }
                 }
-                threadsData.swap(activeThreads);
             }
+            threadsData.swap(activeThreads);
         }        
     }
 
     for (auto& thread : threadsData) {
         thread->active = false;
-        if (thread->workerThread.joinable()) {
-            thread->workerThread.join();
+        if (thread->threadId.joinable()) {
+            thread->threadId.join();
         }
     }
 

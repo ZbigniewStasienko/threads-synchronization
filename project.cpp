@@ -200,10 +200,7 @@ int main() {
                 }
                 threadsData.swap(activeThreads);
             }
-        }
-
-        printf("%d \n", threadsData.size());
-        
+        }        
     }
 
     for (auto& thread : threadsData) {
@@ -224,6 +221,6 @@ int main() {
     glfwSetWindowShouldClose(window, GL_TRUE);
     glfwDestroyWindow(window);
     glfwTerminate();
-
+    
     return 0;
 }

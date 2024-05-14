@@ -67,6 +67,16 @@ void threadFunction(shared_ptr<ThreadData> data) {
             }
         }
 
+        if (foundX == 1.0f) {
+            data->x += moveX;
+            data->y += data->direction;
+        } else {
+            reachedStand = true;
+            data->waiting = true;
+            usleep(1000000);
+            data->waiting = false;
+        }
+
         if (!reachedCenter && data->x >= 0.0f) {
             reachedCenter = true;
             if (currentColorIndex == 0) {
@@ -80,16 +90,6 @@ void threadFunction(shared_ptr<ThreadData> data) {
 
         if (data->direction != 0.0f && data->x >= 0.475f) {
             data->direction = 0.0f;
-        }
-
-        if (foundX == 1.0f) {
-            data->x += moveX;
-            data->y += data->direction;
-        } else {
-            reachedStand = true;
-            data->waiting = true;
-            usleep(1000000);
-            data->waiting = false;
         }
 
         if (!reachedStand && data->x >= 0.95f) {
@@ -204,7 +204,8 @@ int main() {
     while (running) {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();
-        if (elapsed >= 0.4f) {
+        float generationTime = 0.5f;
+        if (elapsed >= generationTime) {
             float speed = static_cast<float>(rand() % 10000 + 5000);
             auto data = make_shared<ThreadData>(speed);
             data->threadId = thread(threadFunction, data);

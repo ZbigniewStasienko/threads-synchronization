@@ -58,10 +58,14 @@ void threadFunction(shared_ptr<ThreadData> data) {
         if (!reachedCenter && data->x >= 0.0f) {
             reachedCenter = true;
             if (currentColorIndex == 0) {
-                data->direction = 0.0025;
+                data->direction = 0.005;
             } else if (currentColorIndex == 1) {
-                data->direction = -0.0025;
+                data->direction = -0.005;
             }
+        }
+
+        if (data->direction != 0.0f && data->x >= 0.475f) {
+            data->direction = 0.0f;
         }
 
         if (!reachedStand && data->x >= 0.95f) {

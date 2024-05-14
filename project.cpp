@@ -16,13 +16,15 @@ struct ThreadData {
     float x;
     float y;
     float direction;
+    int stand;
     volatile bool active;
     volatile bool finished;
+    volatile bool waiting;
     thread threadId;
     float color[3];
 
     ThreadData(float s)
-        : speed(s), x(-0.9f), y(0.0f), direction(0.0f), active(true), finished(false) {
+        : speed(s), x(-0.9f), y(0.0f), direction(0.0f), active(true), finished(false), waiting(false), stand(2) {
         color[0] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         color[1] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         color[2] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
@@ -49,18 +51,30 @@ void threadFunction(shared_ptr<ThreadData> data) {
     float threadSpeed = data->speed;
 
     while (data->active) {
+        float moveX = 0.005f;
+        float foundX = 1.0f;
+
         {
             lock_guard<mutex> lk(threadMutex);
-            data->x += 0.005f;
-            data->y += data->direction;
+            if (reachedCenter) {
+                for (const auto& dataCheck : threadsData) {
+                    if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.05f >= dataCheck->x) {
+                        if (dataCheck->x < foundX) {
+                            foundX = dataCheck->x;
+                        }
+                    }
+                }
+            }
         }
 
         if (!reachedCenter && data->x >= 0.0f) {
             reachedCenter = true;
             if (currentColorIndex == 0) {
                 data->direction = 0.005;
+                data->stand = 1;
             } else if (currentColorIndex == 1) {
                 data->direction = -0.005;
+                data->stand = 3;
             }
         }
 
@@ -68,9 +82,19 @@ void threadFunction(shared_ptr<ThreadData> data) {
             data->direction = 0.0f;
         }
 
+        if (foundX == 1.0f) {
+            data->x += moveX;
+            data->y += data->direction;
+        } else {
+            reachedStand = true;
+            data->waiting = true;
+            usleep(1000000);
+            data->waiting = false;
+        }
+
         if (!reachedStand && data->x >= 0.95f) {
             reachedStand = true;
-            data->direction = 0.0f;
+            data->waiting = true;
             usleep(1000000);
         }
 
@@ -86,6 +110,7 @@ void threadFunction(shared_ptr<ThreadData> data) {
         data->finished = true;
     }
 }
+
 
 void colorChangeFunction() {
     int changeColorTime = 2;

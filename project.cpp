@@ -58,7 +58,7 @@ void threadFunction(shared_ptr<ThreadData> data) {
             lock_guard<mutex> lk(threadMutex);
             if (reachedCenter) {
                 for (const auto& dataCheck : threadsData) {
-                    if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.05f >= dataCheck->x) {
+                    if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.025f >= dataCheck->x && !reachedStand) {
                         if (dataCheck->x < foundX) {
                             foundX = dataCheck->x;
                         }
@@ -204,7 +204,7 @@ int main() {
     while (running) {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();
-        if (elapsed >= 1.5f) {
+        if (elapsed >= 0.4f) {
             float speed = static_cast<float>(rand() % 10000 + 5000);
             auto data = make_shared<ThreadData>(speed);
             data->threadId = thread(threadFunction, data);

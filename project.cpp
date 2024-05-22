@@ -51,7 +51,7 @@ void threadFunction(shared_ptr<ThreadData> data) {
     float threadSpeed = data->speed;
     bool toStand = false;
     float moveX = 0.005f;
-    unique_lock<mutex> lk;
+    unique_lock<mutex> lock;
 
     while (data->active) {
 
@@ -74,10 +74,10 @@ void threadFunction(shared_ptr<ThreadData> data) {
             data->x += moveX;
             data->y += data->direction;
         } else {
+            data->waiting = true;
             while(!toStand){
-                lk = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
-                data->waiting = true;
-                if (lk.try_lock()) {
+                lock = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
+                if (lock.try_lock()) {
                     toStand = true;
                 } else {
                     usleep(250000);
@@ -101,18 +101,19 @@ void threadFunction(shared_ptr<ThreadData> data) {
         }
 
         if (!reachedStand && data->x >= 0.97f) {
-            if(!toStand && !lk.owns_lock()){
-                toStand = lk.try_lock();
+            if(!toStand){
+                lock = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
+                lock.lock();
+                toStand = true;
             }
             if (toStand) {
                 reachedStand = true;
                 data->waiting = true;
                 usleep(1000000);
-                lk.unlock();
+                lock.unlock();
                 toStand = false;
             }
         }
-
 
         if (data->x >= 1.0f) {
             data->active = false;
@@ -126,7 +127,6 @@ void threadFunction(shared_ptr<ThreadData> data) {
         data->finished = true;
     }
 }
-
 
 void colorChangeFunction() {
     int changeColorTime = 2;

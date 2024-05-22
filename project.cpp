@@ -50,27 +50,26 @@ void threadFunction(shared_ptr<ThreadData> data) {
     bool reachedStand = false;
     float threadSpeed = data->speed;
     bool toStand = false;
+    bool shouldWait;
     float moveX = 0.005f;
     unique_lock<mutex> lock;
 
     while (data->active) {
 
-        float foundX = 1.0f;
-        
+        shouldWait = false;
+
         {
             lock_guard<mutex> lk(threadMutex);
             if (reachedCenter) {
                 for (const auto& dataCheck : threadsData) {
                     if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.025f >= dataCheck->x && !reachedStand && !toStand) {
-                        if (dataCheck->x < foundX) {
-                            foundX = dataCheck->x;
-                        }
+                        shouldWait = true;
                     }
                 }
             }
         }
 
-        if (foundX == 1.0f) {
+        if (!shouldWait) {
             data->x += moveX;
             data->y += data->direction;
         } else {
@@ -104,15 +103,12 @@ void threadFunction(shared_ptr<ThreadData> data) {
             if(!toStand){
                 lock = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
                 lock.lock();
-                toStand = true;
             }
-            if (toStand) {
-                reachedStand = true;
-                data->waiting = true;
-                usleep(1000000);
-                lock.unlock();
-                toStand = false;
-            }
+            reachedStand = true;
+            data->waiting = true;
+            usleep(1000000);
+            lock.unlock();
+            toStand = false;
         }
 
         if (data->x >= 1.0f) {
@@ -217,7 +213,7 @@ int main() {
     while (running) {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();
-        float generationTime = 0.5f;
+        float generationTime = 0.6f;
         if (elapsed >= generationTime) {
             float speed = static_cast<float>(rand() % 10000 + 5000);
             auto data = make_shared<ThreadData>(speed);

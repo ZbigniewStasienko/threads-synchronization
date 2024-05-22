@@ -16,13 +16,15 @@ struct ThreadData {
     float x;
     float y;
     float direction;
+    int stand;
     volatile bool active;
     volatile bool finished;
+    volatile bool waiting;
     thread threadId;
     float color[3];
 
     ThreadData(float s)
-        : speed(s), x(-0.9f), y(0.0f), direction(0.0f), active(true), finished(false) {
+        : speed(s), x(-0.9f), y(0.0f), direction(0.0f), active(true), finished(false), waiting(false), stand(2) {
         color[0] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         color[1] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         color[2] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
@@ -35,30 +37,62 @@ float colorSquare[3][3] = {
     {1.0f, 0.5f, 0.0f}
 };
 
-int currentColorIndex = 0;
-mutex colorMutex;
+volatile int currentColorIndex = 0;
 volatile bool running = true;
 
 thread colorChangeThread;
 vector<shared_ptr<ThreadData>> threadsData;
 mutex threadMutex;
+vector<mutex> standMutexes(3);
 
 void threadFunction(shared_ptr<ThreadData> data) {
     bool reachedCenter = false;
     bool reachedStand = false;
     float threadSpeed = data->speed;
+    bool toStand = false;
+    float moveX = 0.005f;
+    unique_lock<mutex> lk;
 
     while (data->active) {
 
-        data->x += 0.005f;
-        data->y += data->direction;
+        float foundX = 1.0f;
+        
+        {
+            lock_guard<mutex> lk(threadMutex);
+            if (reachedCenter) {
+                for (const auto& dataCheck : threadsData) {
+                    if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.025f >= dataCheck->x && !reachedStand && !toStand) {
+                        if (dataCheck->x < foundX) {
+                            foundX = dataCheck->x;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (foundX == 1.0f) {
+            data->x += moveX;
+            data->y += data->direction;
+        } else {
+            while(!toStand){
+                lk = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
+                data->waiting = true;
+                if (lk.try_lock()) {
+                    toStand = true;
+                } else {
+                    usleep(250000);
+                }
+            }
+        }
 
         if (!reachedCenter && data->x >= 0.0f) {
             reachedCenter = true;
             if (currentColorIndex == 0) {
                 data->direction = 0.005;
+                data->stand = 1;
             } else if (currentColorIndex == 1) {
                 data->direction = -0.005;
+                data->stand = 3;
             }
         }
 
@@ -67,10 +101,18 @@ void threadFunction(shared_ptr<ThreadData> data) {
         }
 
         if (!reachedStand && data->x >= 0.97f) {
-            reachedStand = true;
-            data->direction = 0.0f;
-            usleep(1000000);
+            if(!toStand && !lk.owns_lock()){
+                toStand = lk.try_lock();
+            }
+            if (toStand) {
+                reachedStand = true;
+                data->waiting = true;
+                usleep(1000000);
+                lk.unlock();
+                toStand = false;
+            }
         }
+
 
         if (data->x >= 1.0f) {
             data->active = false;
@@ -79,17 +121,17 @@ void threadFunction(shared_ptr<ThreadData> data) {
         usleep(threadSpeed);
     }
 
-    data->finished = true;
+    {
+        lock_guard<mutex> lk(threadMutex);
+        data->finished = true;
+    }
 }
 
 
 void colorChangeFunction() {
     int changeColorTime = 2;
     while (running) {
-        {
-            lock_guard<mutex> lk(colorMutex);
-            currentColorIndex = (currentColorIndex + 1) % 3;
-        }
+        currentColorIndex = (currentColorIndex + 1) % 3;
         sleep(changeColorTime);
     }
 }

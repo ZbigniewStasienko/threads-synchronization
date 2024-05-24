@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 using namespace std;
 
@@ -43,7 +44,9 @@ volatile bool running = true;
 thread colorChangeThread;
 vector<shared_ptr<ThreadData>> threadsData;
 mutex threadMutex;
+condition_variable cv;
 vector<mutex> standMutexes(3);
+bool isStandAvailable[3] = {true, true, true};
 
 void threadFunction(shared_ptr<ThreadData> data) {
     bool reachedCenter = false;
@@ -75,14 +78,13 @@ void threadFunction(shared_ptr<ThreadData> data) {
             data->y += data->direction;
         } else {
             data->waiting = true;
-            while(!toStand){
-                lock = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
-                if (lock.try_lock()) {
-                    toStand = true;
-                } else {
-                    usleep(250000);
-                }
+            unique_lock<mutex> lock(standMutexes[data->stand - 1]);
+            cv.wait(lock, [&] { return isStandAvailable[data->stand - 1] || !running; });
+            if (!running) {
+                break;
             }
+            isStandAvailable[data->stand - 1] = false;
+            toStand = true;
         }
 
         if (!reachedCenter && data->x >= 0.0f) {
@@ -101,14 +103,15 @@ void threadFunction(shared_ptr<ThreadData> data) {
         }
 
         if (!reachedStand && data->x >= 0.97f) {
-            if(!toStand){
-                lock = unique_lock<mutex>(standMutexes[data->stand - 1], defer_lock);
-                lock.lock();
+            {
+                lock = unique_lock<mutex>(standMutexes[data->stand - 1]);
+                reachedStand = true;
+                data->waiting = true;
+                isStandAvailable[data->stand - 1] = false;
+                usleep(1000000);
+                isStandAvailable[data->stand - 1] = true;
+                cv.notify_one();
             }
-            reachedStand = true;
-            data->waiting = true;
-            usleep(1000000);
-            lock.unlock();
             toStand = false;
         }
 
@@ -190,6 +193,7 @@ void draw() {
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
         running = false;
+        cv.notify_all();
     }
 }
 

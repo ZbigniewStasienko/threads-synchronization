@@ -64,6 +64,7 @@ void threadFunction(shared_ptr<ThreadData> data) {
                 for (const auto& dataCheck : threadsData) {
                     if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.025f >= dataCheck->x && !reachedStand && !toStand) {
                         shouldWait = true;
+                        break;
                     }
                 }
             }

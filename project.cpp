@@ -39,14 +39,23 @@ float colorSquare[3][3] = {
 };
 
 volatile int currentColorIndex = 0;
+volatile float numOfWaitingThreads = 0;
 volatile bool running = true;
 
 thread colorChangeThread;
 vector<shared_ptr<ThreadData>> threadsData;
 mutex threadMutex;
+mutex counterMutex;
 condition_variable cv;
 vector<mutex> standMutexes(3);
 bool isStandAvailable[3] = {true, true, true};
+
+
+void counter() {
+    system("clear");
+    printf("Average number of threads waiting in queue: %.2f \n", numOfWaitingThreads / 3);
+    fflush(stdout);
+}
 
 void threadFunction(shared_ptr<ThreadData> data) {
     bool reachedCenter = false;
@@ -78,6 +87,11 @@ void threadFunction(shared_ptr<ThreadData> data) {
             data->y += data->direction;
         } else {
             data->waiting = true;
+            {
+                lock_guard<mutex> lk(counterMutex);
+                numOfWaitingThreads++;
+                counter();
+            }    
             unique_lock<mutex> lock(standMutexes[data->stand - 1]);
             cv.wait(lock, [&] { return isStandAvailable[data->stand - 1] || !running; });
             if (!running) {
@@ -103,6 +117,13 @@ void threadFunction(shared_ptr<ThreadData> data) {
         }
 
         if (!reachedStand && data->x >= 0.97f) {
+            if(!toStand){
+                {
+                    lock_guard<mutex> lk(threadMutex);
+                    numOfWaitingThreads++;
+                    counter();
+                }
+            }
             {
                 lock = unique_lock<mutex>(standMutexes[data->stand - 1]);
                 reachedStand = true;
@@ -111,6 +132,12 @@ void threadFunction(shared_ptr<ThreadData> data) {
                 usleep(1000000);
                 isStandAvailable[data->stand - 1] = true;
                 cv.notify_one();
+                {
+                    lock_guard<mutex> lk(counterMutex);
+                    numOfWaitingThreads--;
+                    counter();
+                }
+                data->waiting = true;
             }
             toStand = false;
         }
@@ -215,6 +242,7 @@ int main() {
 
     auto lastCreationTime = chrono::steady_clock::now();
 
+    counter();
     while (running) {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();

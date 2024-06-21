@@ -1,1 +1,2 @@
-Dodać tworzenie się kolejki przed każdą z kas. Opuszczanie kolejki nie musi uwzględniać kolejności w jakiej napływali nasi klienci (nie ma wymogu, aby klient który jest pierwszy przy okienku został obsłużony jako pierwszy).
+1) Dodać tworzenie się kolejki przed każdą z kas. Opuszczanie kolejki nie musi uwzględniać kolejności w jakiej napływali nasi klienci (nie ma wymogu, aby klient który jest pierwszy przy okienku został obsłużony jako pierwszy).
+2) Wyświetlać na bieżąco jaka jest średnia długość kolejki

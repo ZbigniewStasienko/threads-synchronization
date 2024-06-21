@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 using namespace std;
 
@@ -37,44 +38,53 @@ float colorSquare[3][3] = {
     {1.0f, 0.5f, 0.0f}
 };
 
-int currentColorIndex = 0;
-mutex colorMutex;
-bool running = true;
+volatile int currentColorIndex = 0;
+volatile bool running = true;
 
 thread colorChangeThread;
 vector<shared_ptr<ThreadData>> threadsData;
 mutex threadMutex;
+condition_variable cv;
+vector<mutex> standMutexes(3);
+bool isStandAvailable[3] = {true, true, true};
 
 void threadFunction(shared_ptr<ThreadData> data) {
     bool reachedCenter = false;
     bool reachedStand = false;
     float threadSpeed = data->speed;
+    bool toStand = false;
+    bool shouldWait;
+    float moveX = 0.005f;
+    unique_lock<mutex> lock;
 
     while (data->active) {
-        float moveX = 0.005f;
-        float foundX = 1.0f;
+
+        shouldWait = false;
 
         {
             lock_guard<mutex> lk(threadMutex);
             if (reachedCenter) {
                 for (const auto& dataCheck : threadsData) {
-                    if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.025f >= dataCheck->x && !reachedStand) {
-                        if (dataCheck->x < foundX) {
-                            foundX = dataCheck->x;
-                        }
+                    if (dataCheck->waiting && (dataCheck->stand == data->stand) && data->x + 0.025f >= dataCheck->x && !reachedStand && !toStand) {
+                        shouldWait = true;
+                        break;
                     }
                 }
             }
         }
 
-        if (foundX == 1.0f) {
+        if (!shouldWait) {
             data->x += moveX;
             data->y += data->direction;
         } else {
-            reachedStand = true;
             data->waiting = true;
-            usleep(1000000);
-            data->waiting = false;
+            unique_lock<mutex> lock(standMutexes[data->stand - 1]);
+            cv.wait(lock, [&] { return isStandAvailable[data->stand - 1] || !running; });
+            if (!running) {
+                break;
+            }
+            isStandAvailable[data->stand - 1] = false;
+            toStand = true;
         }
 
         if (!reachedCenter && data->x >= 0.0f) {
@@ -92,10 +102,17 @@ void threadFunction(shared_ptr<ThreadData> data) {
             data->direction = 0.0f;
         }
 
-        if (!reachedStand && data->x >= 0.95f) {
-            reachedStand = true;
-            data->waiting = true;
-            usleep(1000000);
+        if (!reachedStand && data->x >= 0.97f) {
+            {
+                lock = unique_lock<mutex>(standMutexes[data->stand - 1]);
+                reachedStand = true;
+                data->waiting = true;
+                isStandAvailable[data->stand - 1] = false;
+                usleep(1000000);
+                isStandAvailable[data->stand - 1] = true;
+                cv.notify_one();
+            }
+            toStand = false;
         }
 
         if (data->x >= 1.0f) {
@@ -111,14 +128,10 @@ void threadFunction(shared_ptr<ThreadData> data) {
     }
 }
 
-
 void colorChangeFunction() {
     int changeColorTime = 2;
     while (running) {
-        {
-            lock_guard<mutex> lk(colorMutex);
-            currentColorIndex = (currentColorIndex + 1) % 3;
-        }
+        currentColorIndex = (currentColorIndex + 1) % 3;
         sleep(changeColorTime);
     }
 }
@@ -180,6 +193,7 @@ void draw() {
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
         running = false;
+        cv.notify_all();
     }
 }
 
@@ -204,12 +218,15 @@ int main() {
     while (running) {
         auto currentTime = chrono::steady_clock::now();
         float elapsed = chrono::duration<float>(currentTime - lastCreationTime).count();
-        float generationTime = 0.5f;
+        float generationTime = 0.6f;
         if (elapsed >= generationTime) {
             float speed = static_cast<float>(rand() % 10000 + 5000);
             auto data = make_shared<ThreadData>(speed);
             data->threadId = thread(threadFunction, data);
-            threadsData.push_back(data);
+            {
+                lock_guard<mutex> lk(threadMutex);
+                threadsData.push_back(data);
+            }
             lastCreationTime = currentTime;
         }
         draw();
